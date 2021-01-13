@@ -1,5 +1,5 @@
 CC=g++
-CFLAGS+=-Wall -std=c++11
+CFLAGS+=-Wall -std=c++17
 INCLUDES=-I../
 HEADERS=$(wildcard *.h)
 LDFLAGS=-lhiredis
