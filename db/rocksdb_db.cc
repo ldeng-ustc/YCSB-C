@@ -32,18 +32,20 @@ RocksDB::RocksDB(utils::Properties &props) {
 
 void RocksDB::Init() {
   unique_lock<mutex> lock(mutex_);
-  try {
-    cout << "Initializing RocksDB..." << endl;
-    if (option_file_ != "") {
-      rocksdb_ = InitRocksDBWithOptionsFile();
-    } else {
-      rocksdb_ = InitRocksDB();
+  if(rocksdb_ == nullptr) {
+    try {
+      cout << "Initializing RocksDB..." << endl;
+      if (option_file_ != "") {
+        rocksdb_ = InitRocksDBWithOptionsFile();
+      } else {
+        rocksdb_ = InitRocksDB();
+      }
+      cout << "RocksDB Initialized." << endl;
+    } catch (const exception & e) {
+      cout << "Exception when initializing RocksDB" << endl;
+      cout << "message: " << e.what() << endl;
+      throw new utils::Exception(e.what());
     }
-    cout << "RocksDB Initialized." << endl;
-  } catch (const exception & e) {
-    cout << "Exception when initializing RocksDB" << endl;
-    cout << "message: " << e.what() << endl;
-    throw new utils::Exception(e.what());
   }
   references_++;
 }
@@ -302,12 +304,19 @@ rocksdb::ColumnFamilyOptions RocksDB::GetDefaultColumnFamilyOptions(const std::s
 
 void RocksDB::CreateColumnFamily(const std::string & name) {
   cout << "Creating column family: " << name << endl;
-  if( !column_family_locks_.count(name) ) {
-    column_family_locks_[name] = new recursive_mutex();
+  // Concurrent insertion of new mutex will be ignore by concurrent_unordered_map, 
+  // and insert function will return false.
+  // See https://www.threadingbuildingblocks.org/docs/help/reference/containers_overview/concurrent_unordered_map_cls.html
+  recursive_mutex *r_mutex = new recursive_mutex();
+  auto [_, res] = column_family_locks_.insert(make_pair(name, r_mutex));
+  if(! res) {
+    cout << "Delete failed r_mutex" << endl;
+    delete r_mutex;
   }
   lock_guard<recursive_mutex> lock(*column_family_locks_[name]);
   cout << "Lock OK!" << endl;
   if( !column_families_.count(name) ) {
+    cout << "Start creating." << endl;
     rocksdb::ColumnFamilyOptions cf_options;
     if( option_file_ != "" ) {
       // RocksDB requires all options files to include options for the "default" column family;
