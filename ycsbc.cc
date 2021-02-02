@@ -152,6 +152,21 @@ string ParseCommandLine(int argc, const char *argv[], utils::Properties &props) 
       }
       input.close();
       argindex++;
+    } else if (strcmp(argv[argindex], "-p") == 0) {
+      argindex++;
+      if (argindex >= argc) {
+        UsageMessage(argv[0]);
+        exit(0);
+      }
+      const char *split = strstr(argv[argindex], "=");
+      if (!split) {
+        UsageMessage(argv[0]);
+        exit(0);
+      }
+      int keylen = split - argv[argindex];
+      const string key(argv[argindex], keylen);
+      const string value(split + 1);
+      props.SetProperty(key, value);
     } else {
       cout << "Unknown option '" << argv[argindex] << "'" << endl;
       exit(0);
@@ -173,6 +188,8 @@ void UsageMessage(const char *command) {
   cout << "  -db dbname: specify the name of the DB to use (default: basic)" << endl;
   cout << "  -P propertyfile: load properties from the given file. Multiple files can" << endl;
   cout << "                   be specified, and will be processed in the order specified" << endl;
+  cout << "  -p key=value: specify other properties for workload or database, such as" << endl;
+  cout << "                   rocksdb.dir=/data/db" << endl;
 }
 
 inline bool StrStartWith(const char *str, const char *pre) {

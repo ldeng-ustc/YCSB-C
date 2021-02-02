@@ -20,28 +20,31 @@ using namespace std;
 
 namespace ycsbc {
 
-void RocksDB::Init() {
-  unique_lock<mutex> lock(mutex_);
-  if(rocksdb_ == NULL) {
-    rocksdb_dir_ = props_[kPropertyRocksdbDir];
-    cout << "RocksDB data dir: " << rocksdb_dir_ << endl;
-
-    if(props_.properties().count(kPropertyRocksdbOptionsFile)) {
-      option_file_ = props_[kPropertyRocksdbOptionsFile];
-      cout << "RocksDB options file: " << option_file_ << endl;
-    }
-
-    try {
-      if (option_file_ != "") {
-        rocksdb_ = InitRocksDBWithOptionsFile();
-      } else {
-        rocksdb_ = InitRocksDB();
-      }
-    } catch (const exception & e) {
-      throw new utils::Exception(e.what());
-    }
+RocksDB::RocksDB(utils::Properties &props) {
+  rocksdb_dir_ = props.GetProperty(kPropertyRocksdbDir, "/tmp/db");
+  cout << "RocksDB data dir: " << rocksdb_dir_ << endl;
+  option_file_ = props.GetProperty(kPropertyRocksdbOptionsFile, "");
+  if(option_file_ != "") {
+    cout << "RocksDB options file: " << option_file_ << endl;
   }
 
+}
+
+void RocksDB::Init() {
+  unique_lock<mutex> lock(mutex_);
+  try {
+    cout << "Initializing RocksDB..." << endl;
+    if (option_file_ != "") {
+      rocksdb_ = InitRocksDBWithOptionsFile();
+    } else {
+      rocksdb_ = InitRocksDB();
+    }
+    cout << "RocksDB Initialized." << endl;
+  } catch (const exception & e) {
+    cout << "Exception when initializing RocksDB" << endl;
+    cout << "message: " << e.what() << endl;
+    throw new utils::Exception(e.what());
+  }
   references_++;
 }
 
@@ -70,7 +73,7 @@ rocksdb::DB* RocksDB::InitRocksDBWithOptionsFile() {
 
 rocksdb::DB* RocksDB::InitRocksDB() {
   rocksdb::Status s;
-  rocksdb::DB *db;
+  rocksdb::DB *db = nullptr;
   const vector<string> && cf_names = LoadColumnFamilyNames();
   vector<rocksdb::ColumnFamilyOptions> cf_optionss;
   vector<rocksdb::ColumnFamilyDescriptor> cf_descriptors;
@@ -95,6 +98,9 @@ rocksdb::DB* RocksDB::InitRocksDB() {
     options.info_log_level = rocksdb::INFO_LEVEL;
     db_options_ = options;
     s = rocksdb::DB::Open(options, rocksdb_dir_, &db);
+    if(!s.ok()) {
+      throw utils::Exception(s.ToString());
+    }
     return db;
   } else {
     rocksdb::DBOptions options;
@@ -118,6 +124,7 @@ rocksdb::DB* RocksDB::InitRocksDB() {
 }
 
 void RocksDB::Close() {
+  cout << "Close" << endl;
   DB::Close();
 
   unique_lock<mutex> lock(mutex_);
@@ -133,8 +140,6 @@ void RocksDB::Close() {
 
     SaveColumnFamilyNames();
     column_families_.clear();
-
-    rocksdb_dir_ = "";
   }
   references_ --;
   if( !s.ok() ) {
@@ -145,19 +150,24 @@ void RocksDB::Close() {
 int RocksDB::Read(const string &table, const string &key,
          const vector<string> *fields,
          vector<KVPair> &result) {
-  if (!column_families_.count(table)) {
+  // cout << "Reading [" << table << "](" << key << ")" << endl;
+  // cout << "count: " << column_families_.count(table) << endl;
+  // cout << "addr: " << &column_families_ << endl;
+  if (column_families_.count(table) == 0) {
     CreateColumnFamily(table);
   }
+  // cout << "Creating CF OK!" << endl;
   rocksdb::ColumnFamilyHandle *cf = column_families_[table].handle;
   rocksdb::Status s;
   string val;
   s = rocksdb_->Get(rocksdb::ReadOptions(), cf, key, &val);
-  if(s == rocksdb::Status::NotFound()) {
+  if(s.IsNotFound()) {
     return DB::kErrorNoData;
   }
   if(!s.ok()) {
     throw utils::Exception(s.ToString());
   }
+  // cout << "Get OK!" << endl;
   DeserializeValues(val, fields, &result);
   return DB::kOK;
 }
@@ -182,6 +192,7 @@ int RocksDB::Scan(const std::string &table, const std::string &key,
 
 int RocksDB::Update(const string &table, const string &key,
            vector<KVPair> &values) {
+  // cout << "Updating [" << table << "](" << key << ", " << values.size() << ")" << endl;
   if (!column_families_.count(table)) {
     CreateColumnFamily(table);
   }
@@ -213,6 +224,7 @@ int RocksDB::Update(const string &table, const string &key,
 
 int RocksDB::Insert(const std::string &table, const std::string &key,
            std::vector<KVPair> &values) {
+  // cout << "Inserting [" << table << "](" << key << ", " << values.size() << ")" << endl;
   if (!column_families_.count(table)) {
     CreateColumnFamily(table);
   }
@@ -221,12 +233,14 @@ int RocksDB::Insert(const std::string &table, const std::string &key,
   rocksdb::Status s;
   s = rocksdb_->Put(rocksdb::WriteOptions(), cf, key, SerializeValues(values));
   if(!s.ok()) {
+    cout << "RocksDB Error: " << s.ToString() << endl;
     throw utils::Exception(s.ToString());
   }
   return DB::kOK;
 }
 
 int RocksDB::Delete(const std::string &table, const std::string &key) {
+  cout << "Deleting [" << table << "](" << key << ")" << endl;
   if (!column_families_.count(table)) {
     CreateColumnFamily(table);
   }
@@ -287,11 +301,12 @@ rocksdb::ColumnFamilyOptions RocksDB::GetDefaultColumnFamilyOptions(const std::s
 }
 
 void RocksDB::CreateColumnFamily(const std::string & name) {
+  cout << "Creating column family: " << name << endl;
   if( !column_family_locks_.count(name) ) {
     column_family_locks_[name] = new recursive_mutex();
   }
-
   lock_guard<recursive_mutex> lock(*column_family_locks_[name]);
+  cout << "Lock OK!" << endl;
   if( !column_families_.count(name) ) {
     rocksdb::ColumnFamilyOptions cf_options;
     if( option_file_ != "" ) {
@@ -301,26 +316,34 @@ void RocksDB::CreateColumnFamily(const std::string & name) {
     } else {
       cf_options.OptimizeLevelStyleCompaction();
     }
-
-    rocksdb::ColumnFamilyHandle *cf_handle;
+    cout << "Option OK!" << endl;
+    rocksdb::ColumnFamilyHandle *cf_handle = nullptr;
     rocksdb::Status s = rocksdb_->CreateColumnFamily(cf_options, name, &cf_handle);
     if( !s.ok() ) {
-      throw utils::Exception(s.ToString());
+      cout << "Create Column Family failed!" << endl;
+      cout << "message: " << s.ToString() << endl;
+      throw utils::Exception (s.ToString());
     }
     column_families_[name] = ColumnFamily(cf_handle, cf_options);
+    cout << "Column Family created!" << endl;
+    cout << "count: " << column_families_.count(name) << endl;
+    cout << "addr: " << &column_families_ << endl;
   }
 }
 
 string RocksDB::SerializeValues(const vector<KVPair> & values) {
+  // cout << "SerializeValues" << endl;
   string result;
   size_t len = 0;
   for(const KVPair & kv_pair: values) {
     len += 8 + kv_pair.first.length() + kv_pair.second.length();
   }
+  // cout << len << endl;
   result.reserve(len);
   for(const KVPair & kv_pair: values) {
     const string & key = kv_pair.first;
     const string & val = kv_pair.second;
+    // cout << key << ", " << val << endl;
     // encode key length
     for(int i=0; i<4; i++) {
       result += static_cast<char>( key.length() >> (8 * i));
@@ -339,6 +362,7 @@ string RocksDB::SerializeValues(const vector<KVPair> & values) {
 
 void RocksDB::DeserializeValues(const rocksdb::Slice & values, const vector<string> * fields, 
          vector<KVPair> * result) {
+  // cout << "Deserializing" << endl;
   const char *data = values.data();
   size_t len = values.size();
   size_t offset = 0;
@@ -348,6 +372,7 @@ void RocksDB::DeserializeValues(const rocksdb::Slice & values, const vector<stri
     for(int i=0; i<4; i++) {
       key_length += static_cast<unsigned char>((data + offset)[i]) << (8 * i);
     }
+    // cout << "keylen: " << key_length << endl;
     offset += 4;
     // decode key
     string key = string(data + offset, key_length);
@@ -357,10 +382,11 @@ void RocksDB::DeserializeValues(const rocksdb::Slice & values, const vector<stri
     for(int i=0; i<4; i++) {
       val_length += static_cast<unsigned char>((data + offset)[i]) << (8 * i);
     }
+    // cout << "vallen: " << val_length << endl;
     offset += 4;
     // decode value
-    string val = string(data + offset, key_length);
-    offset += key_length;
+    string val = string(data + offset, val_length);
+    offset += val_length;
     
     // if fields is null or contains key
     if(fields == nullptr || find(fields->begin(), fields->end(), key) != fields->end()) {

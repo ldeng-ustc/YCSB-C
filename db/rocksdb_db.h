@@ -20,7 +20,7 @@ namespace ycsbc {
 
 class RocksDB : public DB {
  public:
-  RocksDB(utils::Properties &props):props_(props) {}
+  RocksDB(utils::Properties &props);
 
   void Init();
   
@@ -54,7 +54,6 @@ class RocksDB : public DB {
   };
   
   
-  utils::Properties &props_;
   static inline const std::string kPropertyRocksdbDir = "rocksdb.dir";
   static inline const std::string kPropertyRocksdbOptionsFile = "rocksdb.optionsfile";
   static inline const std::string kColumnFamilyNamesFilename = "CF_NAMES";
