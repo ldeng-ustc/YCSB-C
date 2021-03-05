@@ -57,7 +57,10 @@ rocksdb::DB* RocksDB::InitRocksDBWithOptionsFile() {
   vector<rocksdb::ColumnFamilyDescriptor> cf_descriptors;
   vector<rocksdb::ColumnFamilyHandle*> cf_handles;
 
-  rocksdb::LoadOptionsFromFile(rocksdb::ConfigOptions(), option_file_, &options, &cf_descriptors);
+  s = rocksdb::LoadOptionsFromFile(rocksdb::ConfigOptions(), option_file_, &options, &cf_descriptors);
+  if(!s.ok()) {
+    throw utils::Exception(s.ToString());
+  }
   db_options_ = options;
 
   s = rocksdb::DB::Open(options, rocksdb_dir_, cf_descriptors, &cf_handles, &db);
@@ -262,7 +265,9 @@ int RocksDB::Delete(const std::string &table, const std::string &key) {
 void RocksDB::SaveColumnFamilyNames() {
   try {
     ofstream fout(rocksdb_dir_ + "/" + kColumnFamilyNamesFilename);
-    fout << rocksdb::kDefaultColumnFamilyName << endl;
+    if(column_families_.count(rocksdb::kDefaultColumnFamilyName) == 0) {
+      fout << rocksdb::kDefaultColumnFamilyName << endl;
+    }
     for(const auto & cf_pairs: column_families_) {
       fout << cf_pairs.first << endl;
     }

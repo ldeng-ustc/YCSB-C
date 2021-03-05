@@ -167,6 +167,7 @@ string ParseCommandLine(int argc, const char *argv[], utils::Properties &props) 
       const string key(argv[argindex], keylen);
       const string value(split + 1);
       props.SetProperty(key, value);
+      argindex++;
     } else {
       cout << "Unknown option '" << argv[argindex] << "'" << endl;
       exit(0);
