@@ -381,7 +381,6 @@ string RocksDB::SerializeValues(const vector<KVPair> & values) {
     // append val
     result.append(val);
   }
-  cout << "Serialized value: " << result << endl;
   return result;
 }
 
