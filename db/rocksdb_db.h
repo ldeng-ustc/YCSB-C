@@ -56,9 +56,12 @@ class RocksDB : public DB {
   
   static inline const std::string kPropertyRocksdbDir = "rocksdb.dir";
   static inline const std::string kPropertyRocksdbOptionsFile = "rocksdb.optionsfile";
+  static inline const std::string kPropertyEncodeFieldNames = "rocksdb.encodefieldnames";
   static inline const std::string kColumnFamilyNamesFilename = "CF_NAMES";
   static inline std::string rocksdb_dir_ = "";
   static inline std::string option_file_ = "";
+  static inline bool encode_field_names_ = true;
+  static inline int field_len_ = 0;
   static inline rocksdb::DBOptions db_options_{};
   static inline rocksdb::DB *rocksdb_ = nullptr;
   static inline int references_ = 0;

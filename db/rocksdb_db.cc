@@ -14,6 +14,7 @@
 #include <cstring>
 
 
+#include "core/core_workload.h"
 #include "rocksdb/utilities/options_util.h"
 
 using namespace std;
@@ -27,7 +28,11 @@ RocksDB::RocksDB(utils::Properties &props) {
   if(option_file_ != "") {
     cout << "RocksDB options file: " << option_file_ << endl;
   }
-
+  // if rocksdb.encodefieldnames == false, just joint all fields values and supose
+  // field_len_dist is const, otherwise, encode both fields keys and values (and their length).
+  encode_field_names_ = utils::StrToBool(props.GetProperty(kPropertyEncodeFieldNames, "true"));
+  field_len_ = std::stoi(props.GetProperty(CoreWorkload::FIELD_LENGTH_PROPERTY,
+                                          CoreWorkload::FIELD_LENGTH_DEFAULT));
 }
 
 void RocksDB::Init() {
@@ -346,31 +351,37 @@ void RocksDB::CreateColumnFamily(const std::string & name) {
 }
 
 string RocksDB::SerializeValues(const vector<KVPair> & values) {
-  // cout << "SerializeValues" << endl;
+  // if rocksdb.encodefieldnames == false, just joint all fields values and supose
+  // field_len_dist is const, otherwise, encode both fields keys and values (and their length).
   string result;
   size_t len = 0;
   for(const KVPair & kv_pair: values) {
-    len += 8 + kv_pair.first.length() + kv_pair.second.length();
+    len += kv_pair.second.length();
+    if(encode_field_names_) {
+      // space to encode key and value length and field key.
+      len += 8 + kv_pair.first.length();
+    }
   }
-  // cout << len << endl;
   result.reserve(len);
   for(const KVPair & kv_pair: values) {
     const string & key = kv_pair.first;
     const string & val = kv_pair.second;
-    // cout << key << ", " << val << endl;
-    // encode key length
-    for(int i=0; i<4; i++) {
-      result += static_cast<char>( key.length() >> (8 * i));
-    }
-    // append key
-    result.append(key);
-    //encode val length
-    for(int i=0; i<4; i++) {
-      result += static_cast<char>( val.length() >> (8 * i));
+    if(encode_field_names_) {
+      // encode key length
+      for(int i=0; i<4; i++) {
+        result += static_cast<char>( key.length() >> (8 * i));
+      }
+      // append key
+      result.append(key);
+      //encode val length
+      for(int i=0; i<4; i++) {
+        result += static_cast<char>( val.length() >> (8 * i));
+      }
     }
     // append val
     result.append(val);
   }
+  cout << "Serialized value: " << result << endl;
   return result;
 }
 
@@ -381,27 +392,34 @@ void RocksDB::DeserializeValues(const rocksdb::Slice & values, const vector<stri
   size_t len = values.size();
   size_t offset = 0;
   while(offset < len) {
-    int key_length = 0;
-    // decode key length
-    for(int i=0; i<4; i++) {
-      key_length += static_cast<unsigned char>((data + offset)[i]) << (8 * i);
+    string key;
+    string val;
+    if(encode_field_names_){
+      int key_length = 0;
+      // decode key length
+      for(int i=0; i<4; i++) {
+        key_length += static_cast<unsigned char>((data + offset)[i]) << (8 * i);
+      }
+      // cout << "keylen: " << key_length << endl;
+      offset += 4;
+      // decode key
+      key = string(data + offset, key_length);
+      offset += key_length;
+      // decode value length
+      int val_length = 0;
+      for(int i=0; i<4; i++) {
+        val_length += static_cast<unsigned char>((data + offset)[i]) << (8 * i);
+      }
+      // cout << "vallen: " << val_length << endl;
+      offset += 4;
+      // decode value
+      val = string(data + offset, val_length);
+      offset += val_length;
+    } else {
+      key = "field" + to_string(result->size() + 1);
+      val = string(data + offset, field_len_);
+      offset += field_len_;
     }
-    // cout << "keylen: " << key_length << endl;
-    offset += 4;
-    // decode key
-    string key = string(data + offset, key_length);
-    offset += key_length;
-    // decode value length
-    int val_length = 0;
-    for(int i=0; i<4; i++) {
-      val_length += static_cast<unsigned char>((data + offset)[i]) << (8 * i);
-    }
-    // cout << "vallen: " << val_length << endl;
-    offset += 4;
-    // decode value
-    string val = string(data + offset, val_length);
-    offset += val_length;
-    
     // if fields is null or contains key
     if(fields == nullptr || find(fields->begin(), fields->end(), key) != fields->end()) {
       result->push_back(make_pair(move(key), move(val)));
