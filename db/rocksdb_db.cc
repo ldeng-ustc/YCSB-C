@@ -134,7 +134,6 @@ rocksdb::DB* RocksDB::InitRocksDB() {
 }
 
 void RocksDB::Close() {
-  cout << "Close" << endl;
   DB::Close();
 
   unique_lock<mutex> lock(mutex_);
