@@ -6,8 +6,8 @@
 #   Default data size: 1 KB records (10 fields, 100 bytes each, plus key)
 #   Request distribution: zipfian
 
-recordcount=1000000
-operationcount=1000000
+recordcount=1000
+operationcount=1000
 # recordcount=5
 # operationcount=5
 workload=com.yahoo.ycsb.workloads.CoreWorkload
@@ -17,13 +17,16 @@ zeropadding=12
 
 readallfields=true
 
-readproportion=0.05
+readproportion=1
 updateproportion=0
 scanproportion=0
-insertproportion=0.95
+insertproportion=0
 readmodifywriteproportion=0
 
 requestdistribution=zipfian
 
 fieldcount=1
-fieldlength=100
+fieldlength=1000000
+
+rocksdb.dir=data/db
+rocksdb.encodefieldnames=false
