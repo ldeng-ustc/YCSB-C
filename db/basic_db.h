@@ -91,7 +91,7 @@ class BasicDB : public DB {
   }
 
  private:
-  std::mutex mutex_;
+  static inline std::mutex mutex_{};
 };
 
 } // ycsbc

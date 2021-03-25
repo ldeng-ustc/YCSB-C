@@ -10,6 +10,7 @@
 
 #include <iostream>
 #include <string>
+#include <memory>
 #include "core/properties.h"
 #include "redis/redis_client.h"
 #include "redis/hiredis/hiredis.h"
@@ -21,8 +22,19 @@ namespace ycsbc {
 
 class RedisDB : public DB {
  public:
-  RedisDB(const char *host, int port, int slaves) :
-      redis_(host, port, slaves) {
+  RedisDB() {}
+
+  RedisDB(const char *host, int port, int slaves) {
+    redis_.reset(new RedisClient(host, port, slaves));
+  }
+
+  void Init() {
+    if(redis_ == nullptr) {
+      const utils::Properties &props = this->properties();
+      int port = stoi(props["port"]);
+      int slaves = stoi(props["slaves"]);
+      redis_.reset(new RedisClient(props["host"].c_str(), port, slaves));
+    }
   }
 
   int Read(const std::string &table, const std::string &key,
@@ -45,12 +57,12 @@ class RedisDB : public DB {
 
   int Delete(const std::string &table, const std::string &key) {
     std::string cmd("DEL " + key);
-    redis_.Command(cmd);
+    redis_->Command(cmd);
     return DB::kOK;
   }
 
  private:
-  RedisClient redis_;
+  std::unique_ptr<RedisClient> redis_;
 };
 
 } // ycsbc

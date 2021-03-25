@@ -13,6 +13,8 @@
 
 #include <string>
 #include <vector>
+#include <atomic>
+#include <memory>
 #include "lib/string_hashtable.h"
 
 namespace ycsbc {
@@ -44,6 +46,18 @@ class HashtableDB : public DB {
   virtual void DeleteString(const char *str) = 0;
 
   KeyHashtable *key_table_;
+};
+
+///
+/// To support multiple threads, all instance should use same key_table_. 
+/// T: Derived class of KeyHashtable
+///
+template<class T>
+class StaticHashtableDB : public HashtableDB {
+ protected:
+  StaticHashtableDB() : HashtableDB(global_key_table_) { }
+ private:
+  static inline T *global_key_table_ = new T;
 };
 
 } // ycsbc

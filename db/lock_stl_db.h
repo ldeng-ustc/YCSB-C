@@ -13,23 +13,13 @@
 
 #include <string>
 #include <vector>
+#include <atomic>
 #include "lib/lock_stl_hashtable.h"
 
 namespace ycsbc {
 
-class LockStlDB : public HashtableDB {
- public:
-  LockStlDB() : HashtableDB(
-      new vmp::LockStlHashtable<HashtableDB::FieldHashtable *>) { }
-
-  ~LockStlDB() {
-    std::vector<KeyHashtable::KVPair> key_pairs = key_table_->Entries();
-    for (auto &key_pair : key_pairs) {
-      DeleteFieldHashtable(key_pair.second);
-    }
-    delete key_table_;
-  }
-
+typedef vmp::LockStlHashtable<HashtableDB::FieldHashtable *> LockStlKeyTable;
+class LockStlDB : public StaticHashtableDB<LockStlKeyTable> {
  protected:
   HashtableDB::FieldHashtable *NewFieldHashtable() {
     return new vmp::LockStlHashtable<const char *>;

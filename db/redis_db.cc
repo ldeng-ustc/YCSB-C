@@ -26,7 +26,7 @@ int RedisDB::Read(const string &table, const string &key,
     }
     assert(i == argc - 1);
     redisReply *reply = (redisReply *)redisCommandArgv(
-        redis_.context(), argc, argv, argvlen);
+        redis_->context(), argc, argv, argvlen);
     if (!reply) return DB::kOK;
     assert(reply->type == REDIS_REPLY_ARRAY);
     assert(fields->size() == reply->elements);
@@ -36,7 +36,7 @@ int RedisDB::Read(const string &table, const string &key,
     }
     freeReplyObject(reply);
   } else {
-    redisReply *reply = (redisReply *)redisCommand(redis_.context(),
+    redisReply *reply = (redisReply *)redisCommand(redis_->context(),
         "HGETALL %s", key.c_str());
     if (!reply) return DB::kOK;
     assert(reply->type == REDIS_REPLY_ARRAY);
@@ -67,7 +67,7 @@ int RedisDB::Update(const string &table, const string &key,
     cmd.append(" ").append(p.second);
   }
   assert(cmd.length() == len);
-  redis_.Command(cmd);
+  redis_->Command(cmd);
   return DB::kOK;
 }
 

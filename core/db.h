@@ -11,6 +11,8 @@
 
 #include <vector>
 #include <string>
+#include <memory>
+#include "properties.h"
 
 namespace ycsbc {
 
@@ -20,6 +22,22 @@ class DB {
   static const int kOK = 0;
   static const int kErrorNoData = 1;
   static const int kErrorConflict = 2;
+
+  ///
+  /// Set the properties for this DB.
+  ///
+  virtual void set_properties(const utils::Properties & p) {
+    properties_.reset(&p);
+  }
+
+  ///
+  /// Get the set of properties for this DB.
+  ///
+  virtual const utils::Properties & properties() {
+    return *properties_;
+  }
+
+
   ///
   /// Initializes any state for accessing this DB.
   /// Called once per DB client (thread); there is a single DB instance globally.
@@ -91,6 +109,14 @@ class DB {
   virtual int Delete(const std::string &table, const std::string &key) = 0;
   
   virtual ~DB() { }
+
+ private:
+
+  ///
+  /// Properties for configuring this DB.
+  ///
+  std::shared_ptr<const utils::Properties> properties_;
+
 };
 
 } // ycsbc

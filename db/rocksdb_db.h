@@ -20,7 +20,7 @@ namespace ycsbc {
 
 class RocksDB : public DB {
  public:
-  RocksDB(utils::Properties &props);
+  RocksDB(const utils::Properties &props);
 
   void Init();
   

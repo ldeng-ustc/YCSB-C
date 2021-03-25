@@ -21,7 +21,7 @@ using namespace std;
 
 namespace ycsbc {
 
-RocksDB::RocksDB(utils::Properties &props) {
+RocksDB::RocksDB(const utils::Properties &props) {
   rocksdb_dir_ = props.GetProperty(kPropertyRocksdbDir, "/tmp/db");
   cout << "RocksDB data dir: " << rocksdb_dir_ << endl;
   option_file_ = props.GetProperty(kPropertyRocksdbOptionsFile, "");
