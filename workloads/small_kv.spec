@@ -3,8 +3,8 @@
 #   Key size: 16B, Value size: 16B
 #   load, then read-only
 
-recordcount=10000000
-operationcount=10000000
+recordcount=1000000
+operationcount=1000000
 # recordcount=5
 # operationcount=5
 workload=com.yahoo.ycsb.workloads.CoreWorkload

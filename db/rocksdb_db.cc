@@ -21,23 +21,22 @@ using namespace std;
 
 namespace ycsbc {
 
-RocksDB::RocksDB(const utils::Properties &props) {
-  rocksdb_dir_ = props.GetProperty(kPropertyRocksdbDir, "/tmp/db");
-  cout << "RocksDB data dir: " << rocksdb_dir_ << endl;
-  option_file_ = props.GetProperty(kPropertyRocksdbOptionsFile, "");
-  if(option_file_ != "") {
-    cout << "RocksDB options file: " << option_file_ << endl;
-  }
-  // if rocksdb.encodefieldnames == false, just joint all fields values and supose
-  // field_len_dist is const, otherwise, encode both fields keys and values (and their length).
-  encode_field_names_ = utils::StrToBool(props.GetProperty(kPropertyEncodeFieldNames, "true"));
-  field_len_ = std::stoi(props.GetProperty(CoreWorkload::FIELD_LENGTH_PROPERTY,
-                                          CoreWorkload::FIELD_LENGTH_DEFAULT));
-}
-
 void RocksDB::Init() {
   unique_lock<mutex> lock(mutex_);
   if(rocksdb_ == nullptr) {
+    const auto & props = properties();
+    rocksdb_dir_ = props.GetProperty(kPropertyRocksdbDir, "/tmp/db");
+    cout << "RocksDB data dir: " << rocksdb_dir_ << endl;
+    option_file_ = props.GetProperty(kPropertyRocksdbOptionsFile, "");
+    if(option_file_ != "") {
+      cout << "RocksDB options file: " << option_file_ << endl;
+    }
+    // if rocksdb.encodefieldnames == false, just joint all fields values and supose
+    // field_len_dist is const, otherwise, encode both fields keys and values (and their length).
+    encode_field_names_ = utils::StrToBool(props.GetProperty(kPropertyEncodeFieldNames, "true"));
+    cout << "encode: " << encode_field_names_ << endl;
+    field_len_ = std::stoi(props.GetProperty(CoreWorkload::FIELD_LENGTH_PROPERTY,
+                                            CoreWorkload::FIELD_LENGTH_DEFAULT));
     try {
       cout << "Initializing RocksDB..." << endl;
       if (option_file_ != "") {
@@ -67,7 +66,7 @@ rocksdb::DB* RocksDB::InitRocksDBWithOptionsFile() {
     throw utils::Exception(s.ToString());
   }
   db_options_ = options;
-
+  cout << "CF numbers: " << cf_descriptors.size() << endl;
   s = rocksdb::DB::Open(options, rocksdb_dir_, cf_descriptors, &cf_handles, &db);
   if(!s.ok()) {
     throw utils::Exception(s.ToString());
@@ -398,7 +397,6 @@ void RocksDB::DeserializeValues(const rocksdb::Slice & values, const vector<stri
       for(int i=0; i<4; i++) {
         key_length += static_cast<unsigned char>((data + offset)[i]) << (8 * i);
       }
-      // cout << "keylen: " << key_length << endl;
       offset += 4;
       // decode key
       key = string(data + offset, key_length);

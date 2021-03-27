@@ -57,6 +57,9 @@ class StaticHashtableDB : public HashtableDB {
  protected:
   StaticHashtableDB() : HashtableDB(global_key_table_) { }
  private:
+  // The only hashtable for all StaticHashtableDB instances.
+  // For thread safety, use new and never delete it.
+  // see https://google.github.io/styleguide/cppguide.html#Static_and_Global_Variables
   static inline T *global_key_table_ = new T;
 };
 

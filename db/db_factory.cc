@@ -33,7 +33,9 @@ DB* DBFactory::CreateDB(const utils::Properties &props) {
   } else if (props["dbname"] == "tbb_scan") {
     return new TbbScanDB;
   } else if(props["dbname"] == "rocksdb") {
-    return new RocksDB(props);
+    return new RocksDB();
+  } else if(props["dbname"] == "pidb") { 
+    return new PiDB();
   } else return NULL;
 }
 
