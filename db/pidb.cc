@@ -139,29 +139,6 @@ rocksdb::DB* PiDB::InitRocksDB() {
   }
 }
 
-void PiDB::Close() {
-  DB::Close();
-
-  unique_lock<mutex> lock(mutex_);
-  rocksdb::Status s = rocksdb::Status::OK();
-  if (references_ == 1) {
-    for (auto & cf_pair : column_families_) {
-      ColumnFamily cf = cf_pair.second;
-      delete cf_pair.second.handle;
-    }
-
-    rocksdb::Status s = rocksdb_->Close();
-    rocksdb_ = nullptr;
-
-    SaveColumnFamilyNames();
-    column_families_.clear();
-  }
-  references_ --;
-  if( !s.ok() ) {
-    throw utils::Exception(s.ToString());
-  }
-}
-
 int PiDB::Read(const string &table, const string &key,
          const vector<string> *fields,
          vector<KVPair> &result) {
@@ -180,6 +157,42 @@ int PiDB::Update(const string &table, const string &key,
   return DB::kOK;
 }
 
+rocksdb::FilterBitsBuilder* PiDB::CreateFilterBitsBuilder(const std::string & name) {
+    rocksdb::TableFactory* tf = column_families_[name].options.table_factory.get();
+    auto opts = tf->GetOptions<rocksdb::BlockBasedTableOptions>();
+    auto context = rocksdb::FilterBuildingContext(*opts);
+    return filter_policy_->GetBuilderWithContext(context);
+}
+
+int PiDB::Flush() {
+  rocksdb::ColumnFamilyHandle *cf = column_families_[current_table_].handle;
+  rocksdb::Status s;
+  int seq_id = sequence_id_.fetch_add(1);
+  rocksdb::Slice batch_key(reinterpret_cast<char*>(&seq_id));
+
+  s = rocksdb_->Put(rocksdb::WriteOptions(), cf, batch_key, buf_);
+  if(!s.ok()) {
+    cout << "RocksDB Error: " << s.ToString() << endl;
+    throw utils::Exception(s.ToString());
+  }
+
+  // Build filters and put into default CF.
+  std::unique_ptr<const char []> filter_bits;
+  filter_builder_->Finish(&filter_bits);
+  rocksdb::Slice filter_slice(filter_bits.get());
+  s = rocksdb_->Put(rocksdb::WriteOptions(), batch_key, filter_slice);
+  if(!s.ok()) {
+    cout << "RocksDB Error: " << s.ToString() << endl;
+    throw utils::Exception(s.ToString());
+  }
+
+  // Clear buffer
+  starts_.clear();
+  buf_.clear();
+  filter_builder_.reset();
+  return DB::kOK;
+}
+
 int PiDB::Insert(const std::string &table, const std::string &key,
            std::vector<KVPair> &values) {
   // cout << "Inserting [" << table << "](" << key << ", " << values.size() << ")" << endl;
@@ -187,47 +200,55 @@ int PiDB::Insert(const std::string &table, const std::string &key,
     CreateColumnFamily(table);
   }
 
+  if (sst_filter_builder_ == nullptr) {
+    sst_filter_builder_.reset(CreateFilterBitsBuilder(table));
+  }
+
   if (filter_builder_ == nullptr) {
-    CreateFilterBitsBuilder(table);
+    filter_builder_.reset(CreateFilterBitsBuilder(table));
+    current_table_ = table;
   }
 
   starts_.push_back(buf_.size());
   buf_.append(key);
   buf_.append(SerializeValues(values));
   filter_builder_->AddKey(key);
+  sst_filter_builder_->AddKey(key);
 
   if(starts_.size() == batch_size_) {
-    rocksdb::ColumnFamilyHandle *cf = column_families_[table].handle;
-    rocksdb::Status s;
-    int seq_id = sequence_id_.fetch_add(1);
-    rocksdb::Slice batch_key(reinterpret_cast<char*>(&seq_id));
-
-    s = rocksdb_->Put(rocksdb::WriteOptions(), cf, batch_key, buf_);
-    if(!s.ok()) {
-      cout << "RocksDB Error: " << s.ToString() << endl;
-      throw utils::Exception(s.ToString());
-    }
-
-    // Build filters and put into default CF.
-    std::unique_ptr<const char []> filter_bits;
-    filter_builder_->Finish(&filter_bits);
-    rocksdb::Slice filter_slice(filter_bits.get());
-    s = rocksdb_->Put(rocksdb::WriteOptions(), batch_key, filter_slice);
-    if(!s.ok()) {
-      cout << "RocksDB Error: " << s.ToString() << endl;
-      throw utils::Exception(s.ToString());
-    }
-
-    // Clear buffer
-    starts_.clear();
-    buf_.clear();
-    CreateFilterBitsBuilder(table);
+    return Flush();
   }
   return DB::kOK;
 }
 
 int PiDB::Delete(const std::string &table, const std::string &key) {
   return DB::kOK;
+}
+
+void PiDB::Close() {
+  unique_lock<mutex> lock(mutex_);
+  if(!buf_.empty()){
+    Flush();
+  }
+  rocksdb::Status s = rocksdb::Status::OK();
+  if (references_ == 1) {
+    for (auto & cf_pair : column_families_) {
+      ColumnFamily cf = cf_pair.second;
+      delete cf_pair.second.handle;
+    }
+
+    rocksdb::Status s = rocksdb_->Close();
+    rocksdb_ = nullptr;
+
+    SaveColumnFamilyNames();
+    column_families_.clear();
+  }
+  references_ --;
+  if( !s.ok() ) {
+    throw utils::Exception(s.ToString());
+  }
+
+  DB::Close();
 }
 
 void PiDB::SaveColumnFamilyNames() {
@@ -388,16 +409,5 @@ void PiDB::DeserializeValues(const rocksdb::Slice & values, const vector<string>
     }
   }
 }
-
-void PiDB::CreateFilterBitsBuilder(const std::string & name) {
-  unique_lock<mutex> lock(mutex_);
-  if(filter_builder_ == nullptr) {
-    rocksdb::TableFactory* tf = column_families_[name].options.table_factory.get();
-    auto opts = tf->GetOptions<rocksdb::BlockBasedTableOptions>();
-    auto context = rocksdb::FilterBuildingContext(*opts);
-    filter_builder_.reset(filter_policy_->GetBuilderWithContext(context));
-  }
-}
-
 
 } // namespace ycsbc

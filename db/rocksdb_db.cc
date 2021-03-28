@@ -170,6 +170,7 @@ int RocksDB::Read(const string &table, const string &key,
   string val;
   s = rocksdb_->Get(rocksdb::ReadOptions(), cf, key, &val);
   if(s.IsNotFound()) {
+    cout << "Not Found Key: " << key << endl;
     return DB::kErrorNoData;
   }
   if(!s.ok()) {

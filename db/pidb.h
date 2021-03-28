@@ -86,11 +86,16 @@ class PiDB : public DB {
 
   static inline std::atomic<int> sequence_id_ = 0;
 
+  // Unflush data
   std::unique_ptr<rocksdb::FilterBitsBuilder> filter_builder_;
+  std::string current_table_;
   // buffer for unwrite key value pairs.
   std::string buf_;
   // start position of every KV pairs in buf_.
   std::vector<size_t> starts_;
+
+  // simulated SST data
+  std::unique_ptr<rocksdb::FilterBitsBuilder> sst_filter_builder_;
 
   ///
   /// Initializes and opens the RocksDB database.
@@ -118,7 +123,9 @@ class PiDB : public DB {
   void DeserializeValues(const rocksdb::Slice & values, const std::vector<std::string> * fields, 
            std::vector<KVPair> * result);
   
-  void CreateFilterBitsBuilder(const std::string & name);
+  rocksdb::FilterBitsBuilder * CreateFilterBitsBuilder(const std::string & name);
+  int Flush();
+
 };
 
 } // ycsbc
