@@ -171,6 +171,7 @@ int PiDB::Read(const string &table, const string &key,
           }
           auto pos = batch.find(key);
           if(pos != string::npos) {
+            // cout << "match: " << match << endl;
             string val = batch.substr(pos, field_len_ * field_count_);
             DeserializeValues(val, fields, &result);
             return DB::kOK;
