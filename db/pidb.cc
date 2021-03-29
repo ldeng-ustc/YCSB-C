@@ -24,7 +24,6 @@ namespace ycsbc {
 
 void PiDB::Init() {
   unique_lock<mutex> lock(mutex_);
-  cout << "thread " << std::this_thread::get_id() << " Initializing..." << endl;
   if(rocksdb_ == nullptr) {
     const auto & props = properties();
     rocksdb_dir_ = props.GetProperty(kPropertyRocksdbDir, "/tmp/db");
@@ -38,8 +37,9 @@ void PiDB::Init() {
     encode_field_names_ = utils::StrToBool(props.GetProperty(kPropertyEncodeFieldNames, "true"));
     field_len_ = std::stoi(props.GetProperty(CoreWorkload::FIELD_LENGTH_PROPERTY,
                                             CoreWorkload::FIELD_LENGTH_DEFAULT));
-
-    batch_size_ = std::stoul(props.GetProperty(kPropertyBatchSize, "256"));
+    field_count_ = std::stoi(props.GetProperty(CoreWorkload::FIELD_COUNT_PROPERTY,
+                                            CoreWorkload::FIELD_COUNT_DEFAULT));
+    batch_size_ = std::stoul(props.GetProperty(kPropertyBatchSize, "1024"));
 
     // Initialize filter_policy_
     filter_policy_ = rocksdb::NewBloomFilterPolicy(9.9);
@@ -59,6 +59,8 @@ void PiDB::Init() {
   }
   filter_builder_ = nullptr;
   references_++;
+  thread_id_ = thread_count_.fetch_add(1);
+  cout << "Thread " << thread_id_ << " initialized." << endl;
 }
 
 rocksdb::DB* PiDB::InitRocksDBWithOptionsFile() {
@@ -142,8 +144,39 @@ rocksdb::DB* PiDB::InitRocksDB() {
 int PiDB::Read(const string &table, const string &key,
          const vector<string> *fields,
          vector<KVPair> &result) {
+  if (!column_families_.count(table)) {
+    CreateColumnFamily(table);
+  }
+  rocksdb::ColumnFamilyHandle *cf = column_families_[table].handle;
+  rocksdb::Iterator *iter = rocksdb_->NewIterator(rocksdb::ReadOptions());
+  iter->Seek("B0");
+  for(; iter->Valid() && iter->key()[0] == 'B'; iter->Next()) {
+    auto r = filter_policy_->GetFilterBitsReader(iter->value());
+    if (r->MayMatch(key)) {
+      rocksdb::Slice sst_key = iter->key();
+      sst_key.remove_prefix(1);
+      uint32_t sst_id = stoul(sst_key.ToString());
+      for(uint32_t seq_id: sst_key_caches[sst_id]) {
+        auto r2 = filter_policy_->GetFilterBitsReader(iter->value());
+        if(r2->MayMatch(key)) {
+          rocksdb::Slice batch_key(reinterpret_cast<char*>(&seq_id), 4);
+          string batch;
+          rocksdb::Status s = rocksdb_->Get(rocksdb::ReadOptions(), cf, batch_key, &batch);
+          if(!s.ok()) {
+            cout << "RocksDB Error: " << s.ToString() << endl;
+            throw utils::Exception(s.ToString());
+          }
+          auto pos = batch.find(key);
+          if(pos != string::npos) {
+            string val = batch.substr(pos, field_len_ * field_count_);
+            DeserializeValues(val, fields, &result);
+            return DB::kOK;
+          }
+        }
+      }
+    }
+  }
   return DB::kErrorNoData;
-  return DB::kOK;
 }
 
 int PiDB::Scan(const std::string &table, const std::string &key,
@@ -164,11 +197,26 @@ rocksdb::FilterBitsBuilder* PiDB::CreateFilterBitsBuilder(const std::string & na
     return filter_policy_->GetBuilderWithContext(context);
 }
 
+int PiDB::FlushSST() {
+  rocksdb::Slice sst_key("B" + std::to_string(current_sst_id_));
+  cout << "sst key: " << sst_key.ToStringView() << endl;
+  std::unique_ptr<const char []> filter_bits;
+  rocksdb::Slice filter_slice = sst_filter_builder_->Finish(&filter_bits);
+  rocksdb::Status s = rocksdb_->Put(rocksdb::WriteOptions(), sst_key, filter_slice);
+  cout << "write filter len: " << filter_slice.size() << endl;
+  if(!s.ok()) {
+    cout << "RocksDB Error: " << s.ToString() << endl;
+    throw utils::Exception(s.ToString());
+  }
+  sst_filter_builder_.reset();
+  return DB::kOK;
+}
+
 int PiDB::Flush() {
   rocksdb::ColumnFamilyHandle *cf = column_families_[current_table_].handle;
   rocksdb::Status s;
-  int seq_id = sequence_id_.fetch_add(1);
-  rocksdb::Slice batch_key(reinterpret_cast<char*>(&seq_id));
+  uint32_t seq_id = sequence_id_.fetch_add(1);
+  rocksdb::Slice batch_key(reinterpret_cast<char*>(&seq_id), 4);
 
   s = rocksdb_->Put(rocksdb::WriteOptions(), cf, batch_key, buf_);
   if(!s.ok()) {
@@ -178,18 +226,26 @@ int PiDB::Flush() {
 
   // Build filters and put into default CF.
   std::unique_ptr<const char []> filter_bits;
-  filter_builder_->Finish(&filter_bits);
-  rocksdb::Slice filter_slice(filter_bits.get());
+  rocksdb::Slice filter_slice = filter_builder_->Finish(&filter_bits);
   s = rocksdb_->Put(rocksdb::WriteOptions(), batch_key, filter_slice);
   if(!s.ok()) {
     cout << "RocksDB Error: " << s.ToString() << endl;
     throw utils::Exception(s.ToString());
   }
 
+  sst_filter_caches[seq_id] = buf_;
+  sst_key_caches[current_sst_id_][sst_batch_count_] = seq_id;
+  sst_batch_count_ ++;
+
   // Clear buffer
   starts_.clear();
   buf_.clear();
   filter_builder_.reset();
+
+  if(sst_batch_count_ == kSstSize) {
+    return FlushSST();
+  }
+
   return DB::kOK;
 }
 
@@ -202,6 +258,8 @@ int PiDB::Insert(const std::string &table, const std::string &key,
 
   if (sst_filter_builder_ == nullptr) {
     sst_filter_builder_.reset(CreateFilterBitsBuilder(table));
+    sst_batch_count_ = 0;
+    current_sst_id_ = sst_count_.fetch_add(1);
   }
 
   if (filter_builder_ == nullptr) {
@@ -229,6 +287,9 @@ void PiDB::Close() {
   unique_lock<mutex> lock(mutex_);
   if(!buf_.empty()){
     Flush();
+  }
+  if(sst_batch_count_) {
+    FlushSST();
   }
   rocksdb::Status s = rocksdb::Status::OK();
   if (references_ == 1) {

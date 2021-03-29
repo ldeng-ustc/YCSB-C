@@ -10,6 +10,7 @@
 
 #include <iostream>
 #include <string>
+#include <cstdint>
 #include <vector>
 #include <memory>
 #include <mutex>
@@ -67,6 +68,7 @@ class PiDB : public DB {
   static inline bool encode_field_names_ = true;
   static inline size_t batch_size_ = 0;
   static inline int field_len_ = 0;
+  static inline int field_count_ = 0;
   static inline rocksdb::DBOptions db_options_{}; 
   static inline rocksdb::DB *rocksdb_ = nullptr;
   static inline int references_ = 0;
@@ -84,8 +86,11 @@ class PiDB : public DB {
 
   static inline const rocksdb::FilterPolicy *filter_policy_ = nullptr;
 
-  static inline std::atomic<int> sequence_id_ = 0;
+  static inline std::atomic<uint32_t> sequence_id_ = 0;
 
+  static inline std::atomic<uint32_t> thread_count_ = 0;
+  uint32_t thread_id_;
+  
   // Unflush data
   std::unique_ptr<rocksdb::FilterBitsBuilder> filter_builder_;
   std::string current_table_;
@@ -95,7 +100,20 @@ class PiDB : public DB {
   std::vector<size_t> starts_;
 
   // simulated SST data
+
+  // batch number of every SST file, if size of every KV is 32B,
+  // 1024 kSstSize and 1024 batch_size_ indicate 32 * 1024 * 1024 = 32MB SST file.
+  static inline const size_t kSstSize = 1024;
+  static inline std::atomic<uint32_t> sst_count_ = 0;
+  uint32_t current_sst_id_;
   std::unique_ptr<rocksdb::FilterBitsBuilder> sst_filter_builder_;
+  int sst_batch_count_;
+
+  static inline const size_t kMaxSstFiles = 10240;
+  // simulate SST read
+  static inline uint32_t sst_key_caches[kMaxSstFiles][kSstSize];
+  static inline std::string sst_filter_caches[kMaxSstFiles * kSstSize];
+
 
   ///
   /// Initializes and opens the RocksDB database.
@@ -125,6 +143,7 @@ class PiDB : public DB {
   
   rocksdb::FilterBitsBuilder * CreateFilterBitsBuilder(const std::string & name);
   int Flush();
+  int FlushSST();
 
 };
 
