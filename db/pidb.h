@@ -111,8 +111,8 @@ class PiDB : public DB {
 
   static inline const size_t kMaxSstFiles = 10240;
   // simulate SST read
-  static inline uint32_t sst_key_caches[kMaxSstFiles][kSstSize];
-  static inline std::string sst_filter_caches[kMaxSstFiles * kSstSize];
+  static inline uint32_t sst_key_caches_[kMaxSstFiles][kSstSize];
+  static inline std::string sst_filter_caches_[kMaxSstFiles * kSstSize];
 
 
   ///

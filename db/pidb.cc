@@ -158,9 +158,11 @@ int PiDB::Read(const string &table, const string &key,
       rocksdb::Slice sst_key = iter->key();
       sst_key.remove_prefix(1);
       uint32_t sst_id = stoul(sst_key.ToString());
-      for(uint32_t seq_id: sst_key_caches[sst_id]) {
-        auto r2 = filter_policy_->GetFilterBitsReader(iter->value());
+      int match = 0;
+      for(uint32_t seq_id: sst_key_caches_[sst_id]) {
+        auto r2 = filter_policy_->GetFilterBitsReader(sst_filter_caches_[seq_id]);
         if(r2->MayMatch(key)) {
+          match ++;
           rocksdb::Slice batch_key(reinterpret_cast<char*>(&seq_id), 4);
           rocksdb::Status s = rocksdb_->Get(rocksdb::ReadOptions(), cf, batch_key, &batch);
           if(!s.ok()) {
@@ -234,8 +236,8 @@ int PiDB::Flush() {
     throw utils::Exception(s.ToString());
   }
 
-  sst_filter_caches[seq_id] = buf_;
-  sst_key_caches[current_sst_id_][sst_batch_count_] = seq_id;
+  sst_filter_caches_[seq_id] = filter_slice.ToString();
+  sst_key_caches_[current_sst_id_][sst_batch_count_] = seq_id;
   sst_batch_count_ ++;
 
   // Clear buffer
