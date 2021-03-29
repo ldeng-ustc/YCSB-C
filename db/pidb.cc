@@ -150,6 +150,8 @@ int PiDB::Read(const string &table, const string &key,
   rocksdb::ColumnFamilyHandle *cf = column_families_[table].handle;
   rocksdb::Iterator *iter = rocksdb_->NewIterator(rocksdb::ReadOptions());
   iter->Seek("B0");
+  
+  string batch; // buffer
   for(; iter->Valid() && iter->key()[0] == 'B'; iter->Next()) {
     auto r = filter_policy_->GetFilterBitsReader(iter->value());
     if (r->MayMatch(key)) {
@@ -160,7 +162,6 @@ int PiDB::Read(const string &table, const string &key,
         auto r2 = filter_policy_->GetFilterBitsReader(iter->value());
         if(r2->MayMatch(key)) {
           rocksdb::Slice batch_key(reinterpret_cast<char*>(&seq_id), 4);
-          string batch;
           rocksdb::Status s = rocksdb_->Get(rocksdb::ReadOptions(), cf, batch_key, &batch);
           if(!s.ok()) {
             cout << "RocksDB Error: " << s.ToString() << endl;
