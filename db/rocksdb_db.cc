@@ -37,6 +37,9 @@ void RocksDB::Init() {
     cout << "encode: " << encode_field_names_ << endl;
     field_len_ = std::stoi(props.GetProperty(CoreWorkload::FIELD_LENGTH_PROPERTY,
                                             CoreWorkload::FIELD_LENGTH_DEFAULT));
+    
+    // set write_options
+    write_options_.disableWAL = true;
     try {
       cout << "Initializing RocksDB..." << endl;
       if (option_file_ != "") {
@@ -224,7 +227,7 @@ int RocksDB::Update(const string &table, const string &key,
   result.insert(result.end(), values.begin(), values.end());
 
   // store
-  s = rocksdb_->Put(rocksdb::WriteOptions(), cf, key, SerializeValues(result));
+  s = rocksdb_->Put(write_options_, cf, key, SerializeValues(result));
   if(!s.ok()) {
     throw utils::Exception(s.ToString());
   }
@@ -240,7 +243,7 @@ int RocksDB::Insert(const std::string &table, const std::string &key,
 
   rocksdb::ColumnFamilyHandle *cf = column_families_[table].handle;
   rocksdb::Status s;
-  s = rocksdb_->Put(rocksdb::WriteOptions(), cf, key, SerializeValues(values));
+  s = rocksdb_->Put(write_options_, cf, key, SerializeValues(values));
   if(!s.ok()) {
     cout << "RocksDB Error: " << s.ToString() << endl;
     throw utils::Exception(s.ToString());

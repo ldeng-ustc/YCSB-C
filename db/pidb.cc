@@ -41,6 +41,9 @@ void PiDB::Init() {
                                             CoreWorkload::FIELD_COUNT_DEFAULT));
     batch_size_ = std::stoul(props.GetProperty(kPropertyBatchSize, "1024"));
 
+    // set write_options
+    write_options_.disableWAL = true;
+
     // Initialize filter_policy_
     filter_policy_ = rocksdb::NewBloomFilterPolicy(9.9);
     try {
@@ -206,7 +209,7 @@ int PiDB::FlushSST() {
   cout << "sst key: " << sst_key.ToStringView() << endl;
   std::unique_ptr<const char []> filter_bits;
   rocksdb::Slice filter_slice = sst_filter_builder_->Finish(&filter_bits);
-  rocksdb::Status s = rocksdb_->Put(rocksdb::WriteOptions(), sst_key, filter_slice);
+  rocksdb::Status s = rocksdb_->Put(write_options_, sst_key, filter_slice);
   cout << "write filter len: " << filter_slice.size() << endl;
   if(!s.ok()) {
     cout << "RocksDB Error: " << s.ToString() << endl;
@@ -222,7 +225,7 @@ int PiDB::Flush() {
   uint32_t seq_id = sequence_id_.fetch_add(1);
   rocksdb::Slice batch_key(reinterpret_cast<char*>(&seq_id), 4);
 
-  s = rocksdb_->Put(rocksdb::WriteOptions(), cf, batch_key, buf_);
+  s = rocksdb_->Put(write_options_, cf, batch_key, buf_);
   if(!s.ok()) {
     cout << "RocksDB Error: " << s.ToString() << endl;
     throw utils::Exception(s.ToString());
@@ -231,7 +234,7 @@ int PiDB::Flush() {
   // Build filters and put into default CF.
   std::unique_ptr<const char []> filter_bits;
   rocksdb::Slice filter_slice = filter_builder_->Finish(&filter_bits);
-  s = rocksdb_->Put(rocksdb::WriteOptions(), batch_key, filter_slice);
+  s = rocksdb_->Put(write_options_, batch_key, filter_slice);
   if(!s.ok()) {
     cout << "RocksDB Error: " << s.ToString() << endl;
     throw utils::Exception(s.ToString());

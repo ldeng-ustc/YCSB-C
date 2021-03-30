@@ -70,6 +70,7 @@ class PiDB : public DB {
   static inline int field_len_ = 0;
   static inline int field_count_ = 0;
   static inline rocksdb::DBOptions db_options_{}; 
+  static inline rocksdb::WriteOptions write_options_{};
   static inline rocksdb::DB *rocksdb_ = nullptr;
   static inline int references_ = 0;
   // Mutex for open RocksDB, construtor of mutex is constexpr.
