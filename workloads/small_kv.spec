@@ -4,10 +4,10 @@
 #   load, then read-only
 
 recordcount=1000000
-operationcount=1000000
+operationcount=100000
 # recordcount=5
 # operationcount=5
-workload=com.yahoo.ycsb.workloads.CoreWorkload
+workload=site.ycsb.workloads.CoreWorkload
 insertorder=ordered
 zeropadding=12
 

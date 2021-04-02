@@ -39,7 +39,10 @@ void RocksDB::Init() {
                                             CoreWorkload::FIELD_LENGTH_DEFAULT));
     
     // set write_options
-    write_options_.disableWAL = true;
+    bool disable_wal = utils::StrToBool(props.GetProperty(kPropertyDisableWal, "false"));
+    if(disable_wal) {
+      write_options_.disableWAL = true;
+    }
     try {
       cout << "Initializing RocksDB..." << endl;
       if (option_file_ != "") {
