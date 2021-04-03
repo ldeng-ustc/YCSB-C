@@ -15,6 +15,7 @@
 
 
 #include "core/core_workload.h"
+#include "core/timer.h"
 #include "rocksdb/utilities/options_util.h"
 
 using namespace std;
@@ -37,6 +38,7 @@ void RocksDB::Init() {
     cout << "encode: " << encode_field_names_ << endl;
     field_len_ = std::stoi(props.GetProperty(CoreWorkload::FIELD_LENGTH_PROPERTY,
                                             CoreWorkload::FIELD_LENGTH_DEFAULT));
+    cout << "field len: " << field_len_ << endl;
     
     // set write_options
     bool disable_wal = utils::StrToBool(props.GetProperty(kPropertyDisableWal, "false"));
@@ -157,6 +159,7 @@ void RocksDB::Close() {
   }
   references_ --;
   if( !s.ok() ) {
+    cout << "Close RocksDB failed: " << s.ToString() << endl;
     throw utils::Exception(s.ToString());
   }
 }
@@ -164,13 +167,9 @@ void RocksDB::Close() {
 int RocksDB::Read(const string &table, const string &key,
          const vector<string> *fields,
          vector<KVPair> &result) {
-  // cout << "Reading [" << table << "](" << key << ")" << endl;
-  // cout << "count: " << column_families_.count(table) << endl;
-  // cout << "addr: " << &column_families_ << endl;
   if (column_families_.count(table) == 0) {
     CreateColumnFamily(table);
   }
-  // cout << "Creating CF OK!" << endl;
   rocksdb::ColumnFamilyHandle *cf = column_families_[table].handle;
   rocksdb::Status s;
   string val;
@@ -182,7 +181,6 @@ int RocksDB::Read(const string &table, const string &key,
   if(!s.ok()) {
     throw utils::Exception(s.ToString());
   }
-  // cout << "Get OK!" << endl;
   DeserializeValues(val, fields, &result);
   return DB::kOK;
 }
@@ -245,8 +243,9 @@ int RocksDB::Insert(const std::string &table, const std::string &key,
   }
 
   rocksdb::ColumnFamilyHandle *cf = column_families_[table].handle;
+  string val = SerializeValues(values);
   rocksdb::Status s;
-  s = rocksdb_->Put(write_options_, cf, key, SerializeValues(values));
+  s = rocksdb_->Put(write_options_, cf, key, val);
   if(!s.ok()) {
     cout << "RocksDB Error: " << s.ToString() << endl;
     throw utils::Exception(s.ToString());
