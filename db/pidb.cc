@@ -42,7 +42,7 @@ void PiDB::Init() {
     batch_size_ = std::stoul(props.GetProperty(kPropertyBatchSize, "1024"));
 
     // set write_options
-    write_options_.disableWAL = true;
+    write_options_.disableWAL = false;
 
     // Initialize filter_policy_
     filter_policy_ = rocksdb::NewBloomFilterPolicy(9.9);
