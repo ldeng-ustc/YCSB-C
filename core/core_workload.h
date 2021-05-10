@@ -264,7 +264,7 @@ inline std::string CoreWorkload::NextTransactionKey() {
 
 inline std::string CoreWorkload::NextSecondaryKey(size_t key_field) {
   uint64_t key_num = secondary_key_choosers_[key_field]->Next();
-  return BuildKeyName(key_num, kSecondaryKeyPrefix, ordered_inserts_, zero_padding_);
+  return BuildKeyName(key_num, kSecondaryKeyPrefix, true, zero_padding_);
 }
 
 inline std::string CoreWorkload::BuildKeyName(uint64_t key_num, 
@@ -287,12 +287,13 @@ inline std::string CoreWorkload::NextFieldName() {
 }
 
 inline size_t CoreWorkload::NextSecondaryKeyField() {
+  assert(secondary_key_field_count_ > 0);
   return secondary_key_field_chooser_->Next();
 }
 
 inline std::string CoreWorkload::GetKeyFieldName(size_t key_field) {
-  return BuildKeyName(key_field, kSecondaryKeyFieldNamePrefix,
-              ordered_inserts_, zero_padding_);
+  assert(secondary_key_field_count_ > 0);
+  return kSecondaryKeyFieldNamePrefix + std::to_string(key_field);
 }
   
 } // ycsbc

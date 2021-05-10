@@ -80,12 +80,12 @@ const string CoreWorkload::INSERT_START_DEFAULT = "0";
 const string CoreWorkload::RECORD_COUNT_PROPERTY = "recordcount";
 const string CoreWorkload::OPERATION_COUNT_PROPERTY = "operationcount";
 
-const string CoreWorkload::SECONDARY_KEY_FIELD_COUNT_PROPERTY = "secondarykeycount";
+const string CoreWorkload::SECONDARY_KEY_FIELD_COUNT_PROPERTY = "secondarykeyfieldcount";
 const string CoreWorkload::SECONDARY_KEY_FIELD_COUNT_DEFAULT = "0";
 
 const string CoreWorkload::SECONDARY_KEY_DISTRIBUTION_PROPERTY = 
     "secondarykeydistribution";
-const string CoreWorkload::SECONDARY_KEY_DISTRIBUTION_DEFAULT = "zipfian";
+const string CoreWorkload::SECONDARY_KEY_DISTRIBUTION_DEFAULT = "uniform";
 
 const string CoreWorkload::SECONDARY_REQUEST_DISTRIBUTION_PROPERTY = 
     "secondaryrequestdistribution";
@@ -199,33 +199,35 @@ void CoreWorkload::Init(const utils::Properties &p) {
 
   secondary_key_field_count_ = std::stoi(p.GetProperty(SECONDARY_KEY_FIELD_COUNT_PROPERTY,
                                         SECONDARY_KEY_FIELD_COUNT_DEFAULT));
-  int unique_sec_key = std::stoi(p.GetProperty(UNIQUE_SECONDARY_KEY_COUNT_PROPERTY,
-                                        UNIQUE_SECONDARY_KEY_COUNT_DEFAULT));
-  // If zero, use record count.
-  unique_sec_key = unique_sec_key ? unique_sec_key : record_count_;
-  string sec_key_dist = p.GetProperty(SECONDARY_KEY_DISTRIBUTION_PROPERTY,
-                                SECONDARY_KEY_DISTRIBUTION_DEFAULT);
-  string sec_request_dist = p.GetProperty(SECONDARY_REQUEST_DISTRIBUTION_PROPERTY,
-                                SECONDARY_REQUEST_DISTRIBUTION_DEFAULT);
-  
-  secondary_key_field_chooser_ = new UniformGenerator(0, secondary_key_field_count_ - 1);
-  for (int i = 0; i < secondary_key_field_count_; i ++) {
-    // Secondary keys generators
-    if(sec_key_dist == "uniform") {
-      secondary_key_generators_.push_back(new UniformGenerator(0, unique_sec_key - 1));
-    } else if(sec_key_dist == "zipfian") {
-      secondary_key_generators_.push_back(new ScrambledZipfianGenerator(unique_sec_key));
-    } else {
-      throw utils::Exception("Unknown secondary request distribution: " + sec_request_dist);
-    }
+  if(secondary_key_field_count_ > 0) {
+    int unique_sec_key = std::stoi(p.GetProperty(UNIQUE_SECONDARY_KEY_COUNT_PROPERTY,
+                                          UNIQUE_SECONDARY_KEY_COUNT_DEFAULT));
+    // If zero, use record count.
+    unique_sec_key = unique_sec_key ? unique_sec_key : record_count_;
+    string sec_key_dist = p.GetProperty(SECONDARY_KEY_DISTRIBUTION_PROPERTY,
+                                  SECONDARY_KEY_DISTRIBUTION_DEFAULT);
+    string sec_request_dist = p.GetProperty(SECONDARY_REQUEST_DISTRIBUTION_PROPERTY,
+                                  SECONDARY_REQUEST_DISTRIBUTION_DEFAULT);
+    
+    secondary_key_field_chooser_ = new UniformGenerator(0, secondary_key_field_count_ - 1);
+    for (int i = 0; i < secondary_key_field_count_; i ++) {
+      // Secondary keys generators
+      if(sec_key_dist == "uniform") {
+        secondary_key_generators_.push_back(new UniformGenerator(0, unique_sec_key - 1));
+      } else if(sec_key_dist == "zipfian") {
+        secondary_key_generators_.push_back(new ScrambledZipfianGenerator(unique_sec_key));
+      } else {
+        throw utils::Exception("Unknown secondary request distribution: " + sec_request_dist);
+      }
 
-    // Secondary keys choosers
-    if(sec_request_dist == "uniform") {
-      secondary_key_choosers_.push_back(new UniformGenerator(0, unique_sec_key - 1));
-    } else if(sec_request_dist == "zipfian") {
-      secondary_key_choosers_.push_back(new ScrambledZipfianGenerator(unique_sec_key));
-    } else {
-      throw utils::Exception("Unknown secondary request distribution: " + sec_request_dist);
+      // Secondary keys choosers
+      if(sec_request_dist == "uniform") {
+        secondary_key_choosers_.push_back(new UniformGenerator(0, unique_sec_key - 1));
+      } else if(sec_request_dist == "zipfian") {
+        secondary_key_choosers_.push_back(new ScrambledZipfianGenerator(unique_sec_key));
+      } else {
+        throw utils::Exception("Unknown secondary request distribution: " + sec_request_dist);
+      }
     }
   }
 }
@@ -251,10 +253,10 @@ ycsbc::Generator<uint64_t> *CoreWorkload::GetFieldLenGenerator(
 void CoreWorkload::BuildValues(std::vector<ycsbc::DB::KVPair> &values) {
   for (int i = 0; i < secondary_key_field_count_; i++) {
     ycsbc::DB::KVPair pair;
-    pair.first.append(kSecondaryKeyFieldNamePrefix).append(std::to_string(i));
+    pair.first.append(GetKeyFieldName(i));
     uint64_t key_num = secondary_key_generators_[i]->Next();
     pair.second.append(BuildKeyName(key_num, kSecondaryKeyPrefix, 
-                            ordered_inserts_, zero_padding_));
+                            true, zero_padding_));
     values.push_back(pair);
   }
   for (int i = 0; i < field_count_; ++i) {

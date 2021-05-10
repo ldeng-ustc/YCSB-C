@@ -14,6 +14,8 @@
 #include <iostream>
 #include <string>
 #include <mutex>
+
+#include "fmt/format.h"
 #include "core/properties.h"
 
 using std::cout;
@@ -88,6 +90,14 @@ class BasicDB : public DB {
     std::lock_guard<std::mutex> lock(mutex_);
     cout << "DELETE " << table << ' ' << key << endl;
     return 0; 
+  }
+
+  int Read2(const std::string &table, const std::string &sec_key_field,
+                   const std::string &sec_key,
+                   const std::vector<std::string> *fields,
+                   std::vector<std::vector<KVPair>> &result) {
+    cout << fmt::format("READ-SECONDARY {:12}{:12}{:12}", table, sec_key_field, sec_key) << endl;
+    return 0;
   }
 
  private:

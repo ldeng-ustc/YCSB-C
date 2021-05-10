@@ -65,6 +65,7 @@ inline bool Client::DoTransaction() {
       break;
     case READBYSECONDARY:
       status = TransactionReadBySecondary();
+      break;
     default:
       throw utils::Exception("Operation request is not recognized!");
   }
@@ -142,17 +143,22 @@ inline int Client::TransactionInsert() {
 }
 
 inline int Client::TransactionReadBySecondary() {
+  std::cout << "Here" << std::endl;
   const std::string &table = workload_.NextTable();
+  std::cout << "Table: " << table << std::endl;
   size_t key_field = workload_.NextSecondaryKeyField();
-  const std::string &key_filed_name = workload_.GetKeyFieldName(key_field);
+  std::cout << "Key Field: " << key_field << std::endl;
+  const std::string &key_field_name = workload_.GetKeyFieldName(key_field);
+  std::cout << "Key Field Name: " << key_field_name << std::endl;
   const std::string &sec_key = workload_.NextSecondaryKey(key_field);
+  std::cout << "Sec Key: " << sec_key << std::endl;
   std::vector<std::vector<DB::KVPair>> result;
   if (!workload_.read_all_fields()) {
     std::vector<std::string> fields;
     fields.push_back(workload_.NextFieldName());
-    return db_.Read2(table, key_filed_name, sec_key, &fields, result);
+    return db_.Read2(table, key_field_name, sec_key, &fields, result);
   } else {
-    return db_.Read2(table, key_filed_name, sec_key, NULL, result);
+    return db_.Read2(table, key_field_name, sec_key, NULL, result);
   }
 }
 
