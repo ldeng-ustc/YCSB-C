@@ -25,7 +25,8 @@ enum Operation {
   READ,
   UPDATE,
   SCAN,
-  READMODIFYWRITE
+  READMODIFYWRITE,
+  READBYSECONDARY,
 };
 
 class CoreWorkload {
@@ -99,6 +100,13 @@ class CoreWorkload {
   ///
   static const std::string READMODIFYWRITE_PROPORTION_PROPERTY;
   static const std::string READMODIFYWRITE_PROPORTION_DEFAULT;
+
+  ///
+  /// The name of the property for the proportion of
+  /// read-by-secondary-key transactions.
+  ///
+  static const std::string READBYSECONDARY_PROPORTION_PROPERTY;
+  static const std::string READBYSECONDARY_PROPORTION_DEFAULT;
   
   /// 
   /// The name of the property for the the distribution of request keys.
@@ -141,6 +149,43 @@ class CoreWorkload {
   static const std::string OPERATION_COUNT_PROPERTY;
 
   ///
+  /// The name of the property for the count of secondary key fields.
+  /// Must less than or equal fieldcount.
+  ///
+  static const std::string SECONDARY_KEY_FIELD_COUNT_PROPERTY;
+  static const std::string SECONDARY_KEY_FIELD_COUNT_DEFAULT;
+
+  /// 
+  /// The name of the property for the distribution of secondary keys.
+  /// Options are "uniform", "zipfian".
+  ///
+  static const std::string SECONDARY_KEY_DISTRIBUTION_PROPERTY;
+  static const std::string SECONDARY_KEY_DISTRIBUTION_DEFAULT;
+
+  /// 
+  /// The name of the property for the unique of secondary keys count of every
+  /// secondary key field. When generating, secondary keys will be chosen from this
+  /// number of keys and follow the secondary key distribution.
+  /// If zero, number of sec. key will equal to recordcount.
+  ///
+  static const std::string UNIQUE_SECONDARY_KEY_COUNT_PROPERTY;
+  static const std::string UNIQUE_SECONDARY_KEY_COUNT_DEFAULT;
+
+  /// 
+  /// The name of the property for the request distribution of secondary keys.
+  /// Secondary keys used by secondary operations (i.e. read-by-secondary-key) will
+  /// follow this distribution. 
+  /// Options are "uniform", "zipfian".
+  ///
+  static const std::string SECONDARY_REQUEST_DISTRIBUTION_PROPERTY;
+  static const std::string SECONDARY_REQUEST_DISTRIBUTION_DEFAULT;
+
+  static const std::string kKeyPrefix;
+  static const std::string kSecondaryKeyPrefix;
+  static const std::string kFieldNamePrefix;
+  static const std::string kSecondaryKeyFieldNamePrefix;
+
+  ///
   /// Initialize the scenario.
   /// Called once, in the main client thread, before any operations are started.
   ///
@@ -152,18 +197,22 @@ class CoreWorkload {
   virtual std::string NextTable() { return table_name_; }
   virtual std::string NextSequenceKey(); /// Used for loading data
   virtual std::string NextTransactionKey(); /// Used for transactions
+  /// Used for transactions of secondary operations
+  virtual std::string NextSecondaryKey(size_t key_field);
   virtual Operation NextOperation() { return op_chooser_.Next(); }
   virtual std::string NextFieldName();
+  virtual size_t NextSecondaryKeyField();
+  virtual std::string GetKeyFieldName(size_t key_field);
   virtual size_t NextScanLength() { return scan_len_chooser_->Next(); }
   
   bool read_all_fields() const { return read_all_fields_; }
   bool write_all_fields() const { return write_all_fields_; }
 
   CoreWorkload() :
-      field_count_(0), read_all_fields_(false), write_all_fields_(false),
+      field_count_(0), secondary_key_field_count_(0), read_all_fields_(false), write_all_fields_(false),
       field_len_generator_(NULL), key_generator_(NULL), key_chooser_(NULL),
       field_chooser_(NULL), scan_len_chooser_(NULL), insert_key_sequence_(3),
-      ordered_inserts_(true), record_count_(0) {
+      secondary_key_field_chooser_(NULL), ordered_inserts_(true), record_count_(0) {
   }
   
   virtual ~CoreWorkload() {
@@ -177,9 +226,12 @@ class CoreWorkload {
  protected:
   static Generator<uint64_t> *GetFieldLenGenerator(const utils::Properties &p);
   std::string BuildKeyName(uint64_t key_num);
+  std::string BuildKeyName(uint64_t key_num, const std::string prefix,
+                                  bool ordered,int zero_padding);
 
   std::string table_name_;
   int field_count_;
+  int secondary_key_field_count_;
   bool read_all_fields_;
   bool write_all_fields_;
   Generator<uint64_t> *field_len_generator_;
@@ -189,6 +241,9 @@ class CoreWorkload {
   Generator<uint64_t> *field_chooser_;
   Generator<uint64_t> *scan_len_chooser_;
   CounterGenerator insert_key_sequence_;
+  Generator<uint64_t> *secondary_key_field_chooser_;
+  std::vector<Generator<uint64_t>*> secondary_key_generators_;
+  std::vector<Generator<uint64_t>*> secondary_key_choosers_;
   bool ordered_inserts_;
   size_t record_count_;
   int zero_padding_;
@@ -207,18 +262,37 @@ inline std::string CoreWorkload::NextTransactionKey() {
   return BuildKeyName(key_num);
 }
 
-inline std::string CoreWorkload::BuildKeyName(uint64_t key_num) {
-  if (!ordered_inserts_) {
+inline std::string CoreWorkload::NextSecondaryKey(size_t key_field) {
+  uint64_t key_num = secondary_key_choosers_[key_field]->Next();
+  return BuildKeyName(key_num, kSecondaryKeyPrefix, ordered_inserts_, zero_padding_);
+}
+
+inline std::string CoreWorkload::BuildKeyName(uint64_t key_num, 
+            const std::string prefix, bool ordered, int zero_padding) {
+  if (!ordered) {
     key_num = utils::Hash(key_num);
   }
   std::string key_num_str = std::to_string(key_num);
-  int zeros = zero_padding_ - key_num_str.length();
+  int zeros = zero_padding - key_num_str.length();
   zeros = std::max(0, zeros);
-  return std::string("user").append(zeros, '0').append(key_num_str);
+  return std::string(prefix).append(zeros, '0').append(key_num_str);
+}
+
+inline std::string CoreWorkload::BuildKeyName(uint64_t key_num) {
+  return BuildKeyName(key_num, kKeyPrefix, ordered_inserts_, zero_padding_);
 }
 
 inline std::string CoreWorkload::NextFieldName() {
-  return std::string("field").append(std::to_string(field_chooser_->Next()));
+  return std::string(kFieldNamePrefix).append(std::to_string(field_chooser_->Next()));
+}
+
+inline size_t CoreWorkload::NextSecondaryKeyField() {
+  return secondary_key_field_chooser_->Next();
+}
+
+inline std::string CoreWorkload::GetKeyFieldName(size_t key_field) {
+  return BuildKeyName(key_field, kSecondaryKeyFieldNamePrefix,
+              ordered_inserts_, zero_padding_);
 }
   
 } // ycsbc

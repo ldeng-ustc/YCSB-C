@@ -32,6 +32,7 @@ class Client {
   virtual int TransactionScan();
   virtual int TransactionUpdate();
   virtual int TransactionInsert();
+  virtual int TransactionReadBySecondary();
   
   DB &db_;
   CoreWorkload &workload_;
@@ -62,6 +63,8 @@ inline bool Client::DoTransaction() {
     case READMODIFYWRITE:
       status = TransactionReadModifyWrite();
       break;
+    case READBYSECONDARY:
+      status = TransactionReadBySecondary();
     default:
       throw utils::Exception("Operation request is not recognized!");
   }
@@ -136,7 +139,22 @@ inline int Client::TransactionInsert() {
   std::vector<DB::KVPair> values;
   workload_.BuildValues(values);
   return db_.Insert(table, key, values);
-} 
+}
+
+inline int Client::TransactionReadBySecondary() {
+  const std::string &table = workload_.NextTable();
+  size_t key_field = workload_.NextSecondaryKeyField();
+  const std::string &key_filed_name = workload_.GetKeyFieldName(key_field);
+  const std::string &sec_key = workload_.NextSecondaryKey(key_field);
+  std::vector<std::vector<DB::KVPair>> result;
+  if (!workload_.read_all_fields()) {
+    std::vector<std::string> fields;
+    fields.push_back(workload_.NextFieldName());
+    return db_.Read2(table, key_filed_name, sec_key, &fields, result);
+  } else {
+    return db_.Read2(table, key_filed_name, sec_key, NULL, result);
+  }
+}
 
 } // ycsbc
 

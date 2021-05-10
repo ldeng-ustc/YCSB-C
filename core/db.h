@@ -12,6 +12,9 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <iostream>
+
+#include "utils.h"
 #include "properties.h"
 
 namespace ycsbc {
@@ -107,6 +110,23 @@ class DB {
   /// @return Zero on success, a non-zero error code on error.
   ///
   virtual int Delete(const std::string &table, const std::string &key) = 0;
+  ///
+  /// Reads all records with specified secondary key from the database.
+  /// Field/value pairs from the result are stored in a vector.
+  ///
+  /// @param table The name of the table.
+  /// @param sec_key_field The key field name of the secondary key to search.
+  /// @param sec_key The secondary key name to read.
+  /// @param fields The list of fields to read, or NULL for all of them.
+  /// @param result A vector of results, every result is a vector of field/value pairs.
+  /// @return Zero on success, or a non-zero error code on error/record-miss.
+  ///
+  virtual int Read2(const std::string &table, const std::string &sec_key_field,
+                   const std::string &sec_key,
+                   const std::vector<std::string> *fields,
+                   std::vector<std::vector<KVPair>> &result) {
+    throw utils::Exception("Operation 'Read2' unimplement.");
+  }
   
   virtual ~DB() { }
 
