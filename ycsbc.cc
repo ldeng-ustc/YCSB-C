@@ -15,16 +15,20 @@
 #include "core/timer.h"
 #include "core/client.h"
 #include "core/core_workload.h"
+#include "fmt/format.h"
 #include "db/db_factory.h"
 
 using namespace std;
+using fmt::format;
 
 void UsageMessage(const char *command);
 bool StrStartWith(const char *str, const char *pre);
 string ParseCommandLine(int argc, const char *argv[], utils::Properties &props);
 
 int DelegateClient(const utils::Properties &props, ycsbc::CoreWorkload *wl,
-    const int num_ops, bool is_loading) {
+    const int num_ops, bool is_loading, int tid) {
+  utils::Timer<double> timer;
+  timer.Start();
   ycsbc::DB *db = ycsbc::DBFactory::CreateDB(props);
   db->set_properties(props);
   if (!db) {
@@ -39,6 +43,12 @@ int DelegateClient(const utils::Properties &props, ycsbc::CoreWorkload *wl,
       oks += client.DoInsert();
     } else {
       oks += client.DoTransaction();
+    }
+    if ((i+1) % 10000 == 0) {
+      double duration = timer.End();
+      cout << format("Thread{:3} ({}/{}): {:.4}s, KTPS: {:.4}",
+                        tid, i+1, num_ops, duration, 10/duration) << endl;
+      timer.Start();
     }
   }
   db->Close();
@@ -61,7 +71,7 @@ int main(const int argc, const char *argv[]) {
   timer.Start();
   for (int i = 0; i < num_threads; ++i) {
     actual_ops.emplace_back(async(launch::async,
-        DelegateClient, props, &wl, total_ops / num_threads, true));
+        DelegateClient, props, &wl, total_ops / num_threads, true, i));
   }
   assert((int)actual_ops.size() == num_threads);
 
@@ -82,7 +92,7 @@ int main(const int argc, const char *argv[]) {
   timer.Start();
   for (int i = 0; i < num_threads; ++i) {
     actual_ops.emplace_back(async(launch::async,
-        DelegateClient, props, &wl, total_ops / num_threads, false));
+        DelegateClient, props, &wl, total_ops / num_threads, false, i));
   }
   assert((int)actual_ops.size() == num_threads);
 
