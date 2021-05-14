@@ -16,6 +16,7 @@
 #include "db/tbb_scan_db.h"
 #include "db/rocksdb_db.h"
 #include "db/pidb.h"
+#include "db/pi.h"
 
 using namespace std;
 using ycsbc::DB;
@@ -36,6 +37,8 @@ DB* DBFactory::CreateDB(const utils::Properties &props) {
     return new RocksDB();
   } else if(props["dbname"] == "pidb") { 
     return new PiDB();
+  } else if(props["dbname"] == "pi") {
+    return new PiTest();
   } else return NULL;
 }
 

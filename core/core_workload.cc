@@ -85,7 +85,7 @@ const string CoreWorkload::SECONDARY_KEY_FIELD_COUNT_DEFAULT = "0";
 
 const string CoreWorkload::SECONDARY_KEY_DISTRIBUTION_PROPERTY = 
     "secondarykeydistribution";
-const string CoreWorkload::SECONDARY_KEY_DISTRIBUTION_DEFAULT = "uniform";
+const string CoreWorkload::SECONDARY_KEY_DISTRIBUTION_DEFAULT = "zipfian";
 
 const string CoreWorkload::SECONDARY_REQUEST_DISTRIBUTION_PROPERTY = 
     "secondaryrequestdistribution";
@@ -216,6 +216,9 @@ void CoreWorkload::Init(const utils::Properties &p) {
         secondary_key_generators_.push_back(new UniformGenerator(0, unique_sec_key - 1));
       } else if(sec_key_dist == "zipfian") {
         secondary_key_generators_.push_back(new ScrambledZipfianGenerator(unique_sec_key));
+      } else if(sec_key_dist == "independent_zipfian") {
+        // use different seed
+        secondary_key_generators_.push_back(new ScrambledZipfianGenerator(0, unique_sec_key-1, i+1));
       } else {
         throw utils::Exception("Unknown secondary request distribution: " + sec_request_dist);
       }

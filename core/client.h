@@ -143,15 +143,10 @@ inline int Client::TransactionInsert() {
 }
 
 inline int Client::TransactionReadBySecondary() {
-  std::cout << "Here" << std::endl;
   const std::string &table = workload_.NextTable();
-  std::cout << "Table: " << table << std::endl;
   size_t key_field = workload_.NextSecondaryKeyField();
-  std::cout << "Key Field: " << key_field << std::endl;
   const std::string &key_field_name = workload_.GetKeyFieldName(key_field);
-  std::cout << "Key Field Name: " << key_field_name << std::endl;
   const std::string &sec_key = workload_.NextSecondaryKey(key_field);
-  std::cout << "Sec Key: " << sec_key << std::endl;
   std::vector<std::vector<DB::KVPair>> result;
   if (!workload_.read_all_fields()) {
     std::vector<std::string> fields;
